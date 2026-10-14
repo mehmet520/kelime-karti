@@ -1,6 +1,6 @@
 /* app.js — Kelime Karti arayuzu. Veri cihazdan cikmaz: dosya tarayicida okunur, tarayicinin deposunda tutulur. */
 "use strict";
-const SURUM = "2.1.1";
+const SURUM = "2.1.2";
 const $ = (s, k = document) => k.querySelector(s);
 const $$ = (s, k = document) => [...k.querySelectorAll(s)];
 
@@ -386,7 +386,7 @@ function ayarPaneli() {
     <div class="dugmeler"><button id="disaBtn">Dışa aktar</button><button id="iceBtn">İçe aktar</button><button id="resetBtn">Reset</button></div>
     <p class="soluk">Dışa/içe aktarma işaretleri başka bir cihaza ya da tarayıcıya taşır. Reset bu listedeki ✓ ↻ ◌ işaretlerini siler; ★ favoriler kalır.</p>
     ${mac ? `<h4>Mac'te açan tarayıcı</h4><p>${KKParse.satirIci(mac)} · <a href="kelimekarti://tarayici" id="tarayiciLink">Değiştir</a></p>
-      <p class="soluk">Finder'daki “Kelime kartı yap” (⌃⌥⌘C) bu tarayıcıyı açar.</p>` : ""}
+      <p class="soluk">Finder'daki “Kelime kartı yap” (⌃⌥⌘L) bu tarayıcıyı açar.</p>` : ""}
     <h4>Liste</h4>
     <div class="dugmeler"><button id="kaldirBtn">Bu listeyi kaldır</button></div>
     <p class="soluk">Kelime Kartı ${SURUM} · Dosyalar cihazdan çıkmaz; her şey bu tarayıcıda saklanır.</p>`);

@@ -1,5 +1,5 @@
 /* sw.js — cevrimdisi calisma: uygulama dosyalari onbellekten gelir, arka planda yenilenir. */
-const ONBELLEK = "kelime-karti-v2.1.1";
+const ONBELLEK = "kelime-karti-v2.1.2";
 const DOSYALAR = ["./", "index.html", "app.js", "parse.js", "manifest.webmanifest", "icon-192.png", "icon-512.png", "apple-touch-icon.png"];
 
 self.addEventListener("install", (e) => {
