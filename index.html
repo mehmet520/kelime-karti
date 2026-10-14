@@ -15,6 +15,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Source+Sans+3:wght@400;600;700&display=swap">
 <style>
   :root{
+    color-scheme:light;
     --bg:#faf8f4; --surface:#ffffff; --surface-2:#f3f0ea; --border:#e4ddd0;
     --text:#241f18; --text-dim:#7a7266; --word:#a8330a; --anlam:#6a2fa0; --de:#0a5fa8; --tr:#1c7a4a;
     --code-bg:#efe9dc; --accent:#2f8f86; --cover:#2f8f86; --cover-2:#7fc4bd; --chip:#eef2ee;
@@ -22,6 +23,7 @@
   }
   @media (prefers-color-scheme: dark){
     :root:not([data-theme="light"]){
+      color-scheme:dark;
       --bg:#171512; --surface:#211e19; --surface-2:#2a261f; --border:#3a352b;
       --text:#f1ece1; --text-dim:#a89e8c; --word:#ff8a5c; --anlam:#c79bff; --de:#7cc0ff; --tr:#7fe0ab;
       --code-bg:#332d22; --accent:#4fb3a8; --cover:#3a6e68; --cover-2:#5b9d94; --chip:#26322c;
@@ -29,6 +31,7 @@
     }
   }
   :root[data-theme="dark"]{
+    color-scheme:dark;
     --bg:#171512; --surface:#211e19; --surface-2:#2a261f; --border:#3a352b;
     --text:#f1ece1; --text-dim:#a89e8c; --word:#ff8a5c; --anlam:#c79bff; --de:#7cc0ff; --tr:#7fe0ab;
     --code-bg:#332d22; --accent:#4fb3a8; --cover:#3a6e68; --cover-2:#5b9d94; --chip:#26322c;
@@ -46,6 +49,8 @@
   button:active{transform:scale(.96)}
   button.ikon{padding:6px 9px;min-width:36px}
   button.secili{background:var(--accent);color:#fff;border-color:transparent}
+  select{border:1px solid var(--border);background:var(--surface-2);border-radius:10px;padding:6px 10px;font-size:15px;max-width:100%}
+  .ses-satir{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:6px 0}
   [hidden]{display:none!important}
 
   /* ---------- ust cubuk */

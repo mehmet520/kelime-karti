@@ -1,6 +1,6 @@
 /* app.js — Kelime Karti arayuzu. Veri cihazdan cikmaz: dosya tarayicida okunur, tarayicinin deposunda tutulur. */
 "use strict";
-const SURUM = "2.0.0";
+const SURUM = "2.1.0";
 const $ = (s, k = document) => k.querySelector(s);
 const $$ = (s, k = document) => [...k.querySelectorAll(s)];
 
@@ -239,16 +239,51 @@ function isaretle(kart, kartEl, a) {
 }
 
 // ------------------------------------------------------------ sesli okuma
-function oku(kart) {
+// Ses secimi cihaz basinadir (kk.ses = {dil: voiceURI}); liste ayari degildir.
+// Cevrimici ses (localService false) internet ister; yoksa ya da hata verirse ayni dilin cihaz sesine dusulur.
+const SES_ORNEK = { de: "Guten Morgen! Wie geht es dir heute?", en: "Good morning! How are you today?",
+  es: "¡Buenos días! ¿Cómo estás hoy?", fr: "Bonjour ! Comment vas-tu aujourd'hui ?",
+  it: "Buongiorno! Come stai oggi?", nl: "Goedemorgen! Hoe gaat het vandaag?", tr: "Günaydın! Bugün nasılsın?" };
+const dilSesleri = (dil) => ("speechSynthesis" in window ? speechSynthesis.getVoices() : [])
+  .filter((v) => v.lang.replace("_", "-").toLowerCase().startsWith(dil.slice(0, 2).toLowerCase()));
+const cihazSesi = (dil) => {
+  const l = dilSesleri(dil).filter((v) => v.localService);
+  return l.find((v) => v.lang.replace("_", "-") === dil && v.default) || l.find((v) => v.lang.replace("_", "-") === dil) || l[0] || null;
+};
+function sesBul(dil) {
+  const uri = (depo.al("kk.ses", {}) || {})[dil];
+  const secili = uri && dilSesleri(dil).find((v) => v.voiceURI === uri);
+  if (secili && !secili.localService && navigator.onLine === false) return { ses: cihazSesi(dil), dustu: true };
+  return { ses: secili || cihazSesi(dil), dustu: false };
+}
+function seslendir(metin, dil) {
   if (!("speechSynthesis" in window)) { bildir("Bu tarayıcıda sesli okuma yok."); return; }
-  const metin = [kart.f.wort, kart.f.satz].filter(Boolean).map(duz).join(". ");
   speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(metin);
-  u.lang = D.ayar.dil;
-  const ses = speechSynthesis.getVoices().find((v) => v.lang.replace("_", "-").startsWith(D.ayar.dil.slice(0, 2)));
-  if (ses) u.voice = ses;
-  u.rate = 0.95;
-  speechSynthesis.speak(u);
+  const soyle = (ses, ikinci) => {
+    const u = new SpeechSynthesisUtterance(metin);
+    u.lang = dil; u.rate = 0.95;
+    if (ses) u.voice = ses;
+    u.onerror = (e) => {
+      if (ikinci || !ses || ses.localService || e.error === "interrupted" || e.error === "canceled") return;
+      bildir("Çevrimiçi ses kullanılamadı; cihaz sesiyle okunuyor.");
+      soyle(cihazSesi(dil), true);
+    };
+    speechSynthesis.speak(u);
+  };
+  const { ses, dustu } = sesBul(dil);
+  if (dustu) bildir("İnternet yok; cihaz sesiyle okunuyor.");
+  soyle(ses, dustu);
+}
+function oku(kart) {
+  seslendir([kart.f.wort, kart.f.satz].filter(Boolean).map(duz).join(". "), D.ayar.dil);
+}
+const kac = (x) => String(x).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+function sesSecenekleri(dil) {
+  const uri = (depo.al("kk.ses", {}) || {})[dil] || "";
+  const l = dilSesleri(dil).sort((a, b) => (b.localService - a.localService) || a.name.localeCompare(b.name));
+  const ad = (v) => `${v.name}${v.lang.replace("_", "-") !== dil ? ` (${v.lang})` : ""}${v.localService ? "" : " · çevrimiçi"}`;
+  return `<option value="">Otomatik: cihaz sesi</option>` + l.map((v) =>
+    `<option value="${kac(v.voiceURI)}" ${v.voiceURI === uri ? "selected" : ""}>${kac(ad(v))}</option>`).join("");
 }
 
 // ------------------------------------------------------------ ust cubuk
@@ -333,8 +368,10 @@ function ayarPaneli() {
     <h4>Alanlar ve gruplar</h4>${a.map(alanSatir).join("")}
     <div class="dugmeler" style="margin-top:10px"><button id="degisBtn">⇄ Grupları değiştir</button></div>
     <h4>Sesli okuma</h4>
-    <p><select id="dilSec">${diller.map(([v, t]) => `<option value="${v}" ${v === D.ayar.dil ? "selected" : ""}>${t}</option>`).join("")}</select>
-      <span class="soluk">🔊 kelimeyi ve örnek cümleyi okur</span></p>
+    <div class="ses-satir"><select id="dilSec" aria-label="Dil">${diller.map(([v, t]) => `<option value="${v}" ${v === D.ayar.dil ? "selected" : ""}>${t}</option>`).join("")}</select>
+      <select id="sesSec" aria-label="Ses">${sesSecenekleri(D.ayar.dil)}</select>
+      <button id="sesDene">▶ Dene</button></div>
+    <p class="soluk">🔊 kelimeyi ve örnek cümleyi okur. Cihaz sesleri internetsiz çalışır. “Çevrimiçi” sesler daha doğal olabilir ama internet ister; internet yoksa cihaz sesi kullanılır. Ses seçimi bu cihaz ve tarayıcı için geçerlidir.</p>
     <h4>İşaretler</h4>
     <div class="dugmeler"><button id="disaBtn">Dışa aktar</button><button id="iceBtn">İçe aktar</button><button id="resetBtn">Reset</button></div>
     <p class="soluk">Dışa/içe aktarma işaretleri başka bir cihaza ya da tarayıcıya taşır. Reset bu listedeki ✓ ↻ ◌ işaretlerini siler; ★ favoriler kalır.</p>
@@ -354,7 +391,17 @@ function ayarPaneli() {
     D.ayar.acik = { 1: D.ayar.acik[2], 2: D.ayar.acik[1] };
     D.ozel.clear(); ayarKaydet(); ciz(); ayarPaneli();
   };
-  $("#dilSec", d).onchange = (e) => { D.ayar.dil = e.target.value; ayarKaydet(); };
+  $("#dilSec", d).onchange = (e) => { D.ayar.dil = e.target.value; ayarKaydet(); $("#sesSec", d).innerHTML = sesSecenekleri(D.ayar.dil); };
+  $("#sesSec", d).onchange = (e) => {
+    const s = depo.al("kk.ses", {}) || {};
+    if (e.target.value) s[D.ayar.dil] = e.target.value; else delete s[D.ayar.dil];
+    depo.koy("kk.ses", s);
+  };
+  $("#sesDene", d).onclick = () => seslendir(SES_ORNEK[D.ayar.dil.slice(0, 2)] || "1, 2, 3", D.ayar.dil);
+  // ses listesi bazi tarayicilarda gec gelir (Chrome, Edge): gelince secenekleri tazele
+  if ("speechSynthesis" in window) speechSynthesis.onvoiceschanged = () => {
+    const el = $("#sesSec"); if (el && $("#ayarPanel").open) el.innerHTML = sesSecenekleri(D.ayar.dil);
+  };
   $("#disaBtn", d).onclick = isaretDisa;
   $("#iceBtn", d).onclick = isaretIce;
   $("#resetBtn", d).onclick = () => {
