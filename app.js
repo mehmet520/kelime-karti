@@ -1,6 +1,6 @@
 /* app.js — Kelime Karti arayuzu. Veri cihazdan cikmaz: dosya tarayicida okunur, tarayicinin deposunda tutulur. */
 "use strict";
-const SURUM = "2.2.0";
+const SURUM = "2.2.1";
 const $ = (s, k = document) => k.querySelector(s);
 const $$ = (s, k = document) => [...k.querySelectorAll(s)];
 
@@ -475,7 +475,7 @@ function bilgiPaneli() {
       ${L.sorunlar.map((s) => `<div class="sorun"><b>${KKParse.satirIci(String(s.satir))}</b>: ${KKParse.satirIci(s.neden)}</div>`).join("")}` : ""}
     <h4>Klavye</h4>
     <p class="soluk">↑ ↓ kart seç · Boşluk Grup 2 aç/kapa · ⇧ Boşluk Grup 1 · 1 öğrenildi · 2 sık · 3 seyrek · 4 favori · S sesli oku · / ara · C çalış</p>
-    <p class="soluk">Çalışırken: Boşluk cevabı aç · ${kac(BS_ETIKET)} bildim/doğruydu · V bilemedim/yanlıştı · A S D F seçenekler · Enter kontrol/sonraki · Esc çık</p>
+    <p class="soluk">Çalışırken: Boşluk cevabı aç · 1 ya da ${kac(BS_ETIKET)} bildim/doğruydu · 2 ya da V bilemedim/yanlıştı · 1–4 ya da A S D F seçenekler · Enter kontrol/sonraki · Esc çık</p>
     ${testSayisi ? `<p>${testSayisi} test</p>` : ""}`);
 }
 
@@ -574,10 +574,13 @@ const ORNEK = `# Almanca — Örnek liste
 // Kipler: acbak (cevabi ac, Bildim/Bilemedim), yaz (cevabi yaz, Kontrol, kullanici karar verir), sec (dort secenek,
 // uygulama degerlendirir), test (dosyadaki yapay zeka testleri). Yanlis -> kart "sik" (↻). Soru Grup 1, cevap Grup 2;
 // yon ⚙ -> ⇄ ile degisir. Tuslar FIZIKSEL konumla (Dosya Inceleme ile ayni, 09.10.2026): \ (e.code Backslash; Almanca
-// klavyede #) = Bildim, V = Bilemedim, A S D F G H J K = secenekler.
+// klavyede #) = Bildim, V = Bilemedim, A S D F G H J K = secenekler. Rakamlar da calisir (kullanici karari 15.10.2026,
+// harfler herkese tanidik gelmeyebilir): 1 Bildim, 2 Bilemedim, 1-8 secenekler.
 const META = new Set(["dogru", "celAnlam", "celWort"]);
 const SECENEK_TUS = ["KeyA", "KeyS", "KeyD", "KeyF", "KeyG", "KeyH", "KeyJ", "KeyK"];
 const SECENEK_HARF = ["a", "s", "d", "f", "g", "h", "j", "k"];
+const RAKAM_TUS = ["Digit1", "Digit2", "Digit3", "Digit4", "Digit5", "Digit6", "Digit7", "Digit8"];
+const rakamNo = (e) => { const i = RAKAM_TUS.indexOf(e.code); if (i >= 0) return i; return e.key && e.key.length === 1 ? "12345678".indexOf(e.key) : -1; };
 let BS_ETIKET = "\\";
 (async () => { try { const m = await navigator.keyboard.getLayoutMap(), c = m.get("Backslash"); if (c) BS_ETIKET = c; } catch (e) { /* Safari: yok */ } })();
 const C = { acik: false };
@@ -702,9 +705,9 @@ function calisPaneli() {
   const d = panelAc("calisPanel", `<h3>Çalış</h3>
     <p class="soluk">${xs.length} kart (şu anki süzgeç${D.ara ? " ve arama" : ""}). Soru Grup 1, cevap Grup 2; yönü ⚙ → ⇄ değiştirir.</p>
     <div class="kipler">
-      ${kip("acbak", "Aç-bak", `cevabı aç · ${BS_ETIKET} bildim · V bilemedim`, !xs.length)}
+      ${kip("acbak", "Aç-bak", `cevabı aç · 1 ya da ${BS_ETIKET} bildim · 2 ya da V bilemedim`, !xs.length)}
       ${kip("yaz", "Yaz", "cevabı yaz · Enter kontrol · kararı siz verirsiniz", !xs.length)}
-      ${kip("sec", "Seç", "dört seçenek · A S D F", xs.length < 2)}
+      ${kip("sec", "Seç", "dört seçenek · 1–4 ya da A S D F", xs.length < 2)}
       ${kip("test", `Test${testSay ? ` (${testSay})` : ""}`, turler.length ? "listedeki testler" : "bu listede test yok", !testSay)}
     </div>
     ${turler.length ? `<h4>Test türleri</h4><div class="turler">${turler.map(([t, n]) =>
@@ -767,7 +770,7 @@ function calisCiz() {
       let c = "";
       if (cevapVar) c = dogruS.has(KKParse.sade(s)) ? (C.secim.has(j) ? " dogru" : " kacan") : C.secim.has(j) ? " yanlis" : " soluk";
       else if (C.secim.has(j)) c = " secili";
-      return `<button class="secenek${c}" data-j="${j}"><kbd>${SECENEK_HARF[j].toUpperCase()}</kbd><span>${KKParse.satirIci(s)}</span></button>`;
+      return `<button class="secenek${c}" data-j="${j}"><kbd>${j + 1}</kbd><kbd class="harf">${SECENEK_HARF[j].toUpperCase()}</kbd><span>${KKParse.satirIci(s)}</span></button>`;
     }).join("")}</div>`;
     if (coklu() && !cevapVar) cevap += `<p class="soluk ortala">Birden çok doğru olabilir · işaretleyip Enter</p>`;
     if (C.kip === "sec" && o.sec.dosyadan < 3 && !cevapVar) cevap += `<p class="soluk ortala">${o.sec.dosyadan ? "Bazı seçenekler" : "Seçenekler"} listedeki kartlardan seçildi.</p>`;
@@ -798,8 +801,8 @@ function calisCiz() {
     else if (yazmaKipi()) alt = `<button class="ana genis" data-c="kontrol">Kontrol <kbd>Enter</kbd></button>`;
     else if (coklu()) alt = `<button class="ana genis" data-c="degerlendir">Kontrol <kbd>Enter</kbd></button>`;
   } else if (C.durum === "karar") {
-    alt = `<button class="iyi" data-c="bildim">${C.kip === "acbak" ? "Bildim" : "Doğruydu"} <kbd>${kac(BS_ETIKET)}</kbd></button>
-      <button class="kotu" data-c="bilemedim">${C.kip === "acbak" ? "Bilemedim" : "Yanlıştı"} <kbd>V</kbd></button>`;
+    alt = `<button class="iyi" data-c="bildim">${C.kip === "acbak" ? "Bildim" : "Doğruydu"} <kbd>1 · ${kac(BS_ETIKET)}</kbd></button>
+      <button class="kotu" data-c="bilemedim">${C.kip === "acbak" ? "Bilemedim" : "Yanlıştı"} <kbd>2 · V</kbd></button>`;
   } else {
     alt = `<span class="sonuc ${C.sonOk ? "iyi" : "kotu"}">${C.sonOk ? "Doğru" : "Yanlış → ↻"}</span>
       <button class="ana" data-c="sonraki">Sonraki <kbd>Enter</kbd></button>`;
@@ -887,8 +890,14 @@ document.addEventListener("keydown", (e) => {
     if (C.durum === "soru" && C.kip === "acbak") return eylem("ac");
     return eylem(bs ? "bildim" : "bilemedim");
   }
-  const j = SECENEK_TUS.indexOf(e.code);
+  const j = SECENEK_TUS.indexOf(e.code), rk = rakamNo(e);
   if (j >= 0 && C.durum === "soru" && C.o && C.o.sec) { e.preventDefault(); return eylem("sec", j); }
+  if (rk >= 0 && C.durum === "soru" && C.o && C.o.sec) { e.preventDefault(); return eylem("sec", rk); }
+  if ((rk === 0 || rk === 1) && !(C.o && C.o.sec) && C.durum !== "bitti" && C.durum !== "sonuc") {
+    e.preventDefault();
+    if (C.durum === "soru" && C.kip === "acbak") return eylem("ac");
+    return eylem(rk === 0 ? "bildim" : "bilemedim");
+  }
   if (e.key === " " || e.key === "Enter") {
     e.preventDefault();
     if (C.durum === "bitti") return eylem(e.key === "Enter" && C.yanlislar.length ? "yanlislar" : "yeniden");
