@@ -627,5 +627,25 @@
 
   const api = { oku, mdOku, csvOku, txtOku, jsonOku, xlsxOku, docxOku, satirIci, sade, htmlDuz, DESTEK };
   kok.KKParse = api;
-  if (typeof module !== "undefined" && module.exports) module.exports = api;
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = api;
+    // Komut satiri (ajanlar icin denetim): node parse.js DOSYA... -> kart, test, okunamayan satir; sorun varsa cikis 1
+    if (typeof require !== "undefined" && require.main === module) {
+      const fs = require("fs"), path = require("path");
+      (async () => {
+        let kod = 0;
+        for (const f of process.argv.slice(2)) {
+          try {
+            const l = await oku(path.basename(f), new Uint8Array(fs.readFileSync(f)));
+            const t = l.kartlar.reduce((s, k) => s + (k.t ? k.t.length : 0), 0);
+            const testsiz = l.kartlar.filter((k) => !k.t || !k.t.length).length;
+            console.log(`${f}: ${l.kartlar.length} kart, ${t} test, ${testsiz} testsiz kart, ${l.sorunlar.length} okunamayan satır`);
+            for (const x of l.sorunlar) console.log(`  satır ${x.satir}: ${x.neden}`);
+            if (l.sorunlar.length || !l.kartlar.length) kod = 1;
+          } catch (e) { console.log(`${f}: HATA ${e.message}`); kod = 1; }
+        }
+        process.exit(kod);
+      })();
+    }
+  }
 })(typeof globalThis !== "undefined" ? globalThis : this);
