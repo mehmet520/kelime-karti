@@ -139,6 +139,68 @@
   .sorun{font-size:13.5px;padding:3px 0}
   .sorun b{font-variant-numeric:tabular-nums}
 
+  /* ---------- tek kart modu */
+  body.calisiyor{overflow:hidden}
+  #calis{position:fixed;inset:0;z-index:10;background:var(--bg);display:flex;flex-direction:column;
+    padding:max(10px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) 0 max(16px,env(safe-area-inset-left))}
+  #calis[hidden]{display:none}
+  .calis-ust{display:flex;align-items:center;gap:10px;max-width:760px;width:100%;margin:0 auto;font-size:14px}
+  .calis-ust .ilerleme{font-variant-numeric:tabular-nums;font-weight:700}
+  .calis-ust .kip-adi{color:var(--accent);font-weight:700}
+  .calis-ust .sayac{flex:1;text-align:right;color:var(--text-dim);font-variant-numeric:tabular-nums}
+  .calis-cubuk{height:3px;background:var(--surface-2);border-radius:2px;max-width:760px;width:100%;margin:8px auto 0;overflow:hidden}
+  .calis-cubuk span{display:block;height:100%;background:var(--accent);transition:width .2s}
+  .calis-govde{flex:1;overflow:auto;padding:14px 0}
+  .kart.tek{max-width:760px;margin:0 auto;padding:18px 18px 8px;gap:12px}
+  .kart.tek .f-wort{font-size:26px}
+  .kart.tek .f-satz,.kart.tek .f-anlam{font-size:17px}
+  .kart.tek .bolge{cursor:default}
+  .cevap2{background:var(--surface-2);padding:10px 12px}
+  .test-tur{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--accent)}
+  .test-soru{font-size:19px;line-height:1.45}
+  .secenekler{display:grid;gap:8px}
+  .secenek{display:flex;align-items:center;gap:10px;text-align:left;border-radius:12px;padding:11px 12px;font-size:16px;
+    font-weight:500;background:var(--surface);border:1.5px solid var(--border)}
+  .secenek kbd{font:700 12px/1 "Source Sans 3",sans-serif;background:var(--surface-2);border:1px solid var(--border);border-radius:5px;
+    padding:3px 6px;color:var(--text-dim);text-transform:uppercase}
+  .secenek.secili{border-color:var(--accent);background:var(--chip)}
+  .secenek.dogru{border-color:#2e9e5b;background:rgba(46,158,91,.14);font-weight:700}
+  .secenek.yanlis{border-color:#d33;background:rgba(221,51,51,.12);text-decoration:line-through}
+  .secenek.kacan{border-color:#2e9e5b;border-style:dashed}
+  .secenek.soluk{opacity:.55}
+  .ortala{text-align:center}
+  .yaz input{width:100%;font-size:18px;padding:11px 12px;border-radius:12px;border:1.5px solid var(--border);background:var(--surface)}
+  .yaz input:focus{outline:2px solid var(--accent);outline-offset:1px}
+  .fark{display:grid;gap:6px;font-size:18px;background:var(--surface-2);border-radius:10px;padding:10px 12px;letter-spacing:.02em}
+  .fark small{display:inline-block;width:52px;font-size:11px;font-weight:700;color:var(--text-dim);letter-spacing:0;text-transform:uppercase}
+  .fark .ayni{font-size:13px;color:#2e9e5b;font-weight:700}
+  .h-yanlis{color:#d33;font-weight:800;text-decoration:underline wavy #d33}
+  .h-eksik{color:var(--text-dim);opacity:.8;text-decoration:underline 2px #e08a00;text-underline-offset:3px}
+  .h-fazla{color:#d33;text-decoration:line-through 2px}
+  .h-buyuk{color:#e08a00;font-weight:800}
+  .h-nokta{background:var(--code-bg);border:1px solid var(--border);border-radius:3px;padding:0 2px;color:var(--text-dim)}
+  .cevap-bilgi{display:grid;gap:6px}
+  .calis-alt{display:flex;gap:10px;justify-content:center;align-items:center;flex-wrap:wrap;max-width:760px;width:100%;
+    margin:0 auto;padding:10px 0 max(14px,env(safe-area-inset-bottom));border-top:1px solid var(--border)}
+  .calis-alt button{padding:11px 18px;font-size:16px}
+  .calis-alt button.genis{flex:1;max-width:420px}
+  .calis-alt kbd,.kipler kbd{font:600 11px/1 "Source Sans 3",sans-serif;opacity:.7;margin-left:4px}
+  .calis-alt button.iyi{background:#2e9e5b;color:#fff;border-color:transparent;flex:1;max-width:240px}
+  .calis-alt button.kotu{background:#d33;color:#fff;border-color:transparent;flex:1;max-width:240px}
+  .calis-alt .sonuc{font-weight:700;font-size:16px}
+  .sonuc.iyi,.ozet .iyi{color:#2e9e5b}.sonuc.kotu,.ozet .kotu{color:#d33}
+  .ozet{text-align:center;padding:28px 18px}
+  .ozet h2{font-family:"Fraunces",Georgia,serif;margin:0}
+  .ozet .buyuk{font-size:20px;font-weight:700}
+  .isaretler button[data-a="hata"].secili{color:var(--warn)}
+  .kipler{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .kipler .kip{display:flex;flex-direction:column;align-items:flex-start;gap:3px;border-radius:12px;padding:12px;text-align:left}
+  .kipler .kip b{font-size:16px}
+  .kipler .kip small{font-weight:400;font-size:12.5px;opacity:.85}
+  .kipler .kip:disabled{opacity:.45;cursor:default}
+  .turler{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:14px}
+  .turler small{color:var(--text-dim)}
+
   /* ---------- bildirim */
   #bildirim{position:fixed;left:50%;bottom:max(18px,env(safe-area-inset-bottom));transform:translateX(-50%);z-index:20;
     background:var(--text);color:var(--bg);padding:10px 14px;border-radius:12px;font-size:14px;display:flex;gap:12px;
@@ -161,6 +223,7 @@
     <div class="satir">
       <button id="listeBtn" title="Listeler">Kelime Kartı ▾</button>
       <span class="bosluk"></span>
+      <button class="ikon" id="calisBtn" title="Çalış: tek kart, Aç-bak / Yaz / Seç / Test (C)">▶</button>
       <button class="ikon" id="araBtn" title="Ara (/)">🔍</button>
       <button class="ikon" id="karBtn" title="Karıştır">🔀</button>
       <button class="ikon" id="bilgiBtn" title="Bilgi">ⓘ</button>
@@ -192,6 +255,8 @@
 <dialog id="ayarPanel"><div class="panel" id="ayarIc"></div></dialog>
 <dialog id="bilgiPanel"><div class="panel" id="bilgiIc"></div></dialog>
 <dialog id="listePanel"><div class="panel" id="listeIc"></div></dialog>
+<dialog id="calisPanel"><div class="panel" id="calisIc"></div></dialog>
+<div id="calis" hidden></div>
 <div id="bildirim" hidden></div>
 
 <script src="parse.js"></script>

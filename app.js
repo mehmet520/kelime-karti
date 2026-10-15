@@ -1,6 +1,6 @@
 /* app.js — Kelime Karti arayuzu. Veri cihazdan cikmaz: dosya tarayicida okunur, tarayicinin deposunda tutulur. */
 "use strict";
-const SURUM = "2.1.2";
+const SURUM = "2.2.0";
 const $ = (s, k = document) => k.querySelector(s);
 const $$ = (s, k = document) => [...k.querySelectorAll(s)];
 
@@ -56,7 +56,7 @@ function listeAc(id) {
   $("#ara").value = ""; $("#ara").hidden = true;
   const ayar = depo.al("kk.ayar." + id, {});
   ayar.grup = ayar.grup || {};
-  for (const a of liste.alanlar) if (!(a.k in ayar.grup)) ayar.grup[a.k] = a.rol === "wort" || a.rol === "satz" ? 1 : 2;
+  for (const a of liste.alanlar) if (!(a.k in ayar.grup)) ayar.grup[a.k] = a.rol === "wort" || a.rol === "satz" ? 1 : META.has(a.rol) ? 0 : 2;
   ayar.acik = ayar.acik || { 1: true, 2: true };
   ayar.suzgec = ayar.suzgec || "hepsi";
   ayar.dil = ayar.dil || liste.dil || "de-DE";
@@ -116,8 +116,9 @@ function bolgeAcik(k, g) {
   return o && g in o ? o[g] : D.ayar.acik[g];
 }
 
+const ETIKETSIZ = new Set(["wort", "satz", "anlam", "ceviri", "not"]);   // bunlar renginden tanınır; digerleri adiyla
 function alanHtml(a, html) {
-  if (a.rol) return `<div class="f-${a.rol}">${html}</div>`;
+  if (ETIKETSIZ.has(a.rol)) return `<div class="f-${a.rol}">${html}</div>`;
   return `<div class="f-x"><span class="ad">${KKParse.satirIci(a.ad)}</span>${html}</div>`;
 }
 
@@ -214,16 +215,22 @@ function bolgeCevir(kart, kartEl, g) {
   ustGuncelle();
 }
 
-function isaretle(kart, kartEl, a) {
-  if (a === "ses") { oku(kart); return; }
+/** ✓ ↻ ◌ ★ isaretini degistirir; yeni isareti dondurur. */
+function isaretDegis(kart, a) {
   const k = anahtar(kart);
-  const once = JSON.stringify(D.isaret[k] || {});
   const i = { ...(D.isaret[k] || {}) };
   if (a === "fav") i.fav = !i.fav || undefined;
   else i.d = i.d === a ? undefined : a;
   if (!i.d) delete i.d; if (!i.fav) delete i.fav;
   if (Object.keys(i).length) D.isaret[k] = i; else delete D.isaret[k];
   isaretKaydet();
+  return i;
+}
+function isaretle(kart, kartEl, a) {
+  if (a === "ses") { oku(kart); return; }
+  const k = anahtar(kart);
+  const once = JSON.stringify(D.isaret[k] || {});
+  const i = isaretDegis(kart, a);
   for (const x of ["ok", "sik", "seyrek"]) $(`button[data-a="${x}"]`, kartEl).classList.toggle("secili", i.d === x);
   $(`button[data-a="fav"]`, kartEl).classList.toggle("secili", !!i.fav);
   if (!gorunurMu(kart) && (a === "ok" || D.ayar.suzgec === "ok")) {
@@ -323,6 +330,7 @@ $("#karBtn").addEventListener("click", () => {
 $("#listeBtn").addEventListener("click", listePaneli);
 $("#ayarBtn").addEventListener("click", ayarPaneli);
 $("#bilgiBtn").addEventListener("click", bilgiPaneli);
+$("#calisBtn").addEventListener("click", calisPaneli);
 for (const d of $$("dialog")) d.addEventListener("click", (e) => { if (e.target === d) d.close(); });
 
 // ------------------------------------------------------------ klavye
@@ -351,6 +359,7 @@ document.addEventListener("keydown", (e) => {
     case "4": if (kart) isaretle(kart, el, "fav"); break;
     case "s": if (kart) oku(kart); break;
     case "/": e.preventDefault(); $("#ara").hidden = false; $("#ara").focus(); break;
+    case "c": calisPaneli(); break;
   }
 });
 
@@ -385,6 +394,9 @@ function ayarPaneli() {
     <h4>İşaretler</h4>
     <div class="dugmeler"><button id="disaBtn">Dışa aktar</button><button id="iceBtn">İçe aktar</button><button id="resetBtn">Reset</button></div>
     <p class="soluk">Dışa/içe aktarma işaretleri başka bir cihaza ya da tarayıcıya taşır. Reset bu listedeki ✓ ↻ ◌ işaretlerini siler; ★ favoriler kalır.</p>
+    ${hataMetni().n ? `<h4>Hatalı testler (${hataMetni().n})</h4>
+      <div class="dugmeler"><button id="hataKopyala">Kopyala</button><button id="hataTemizle">Temizle</button></div>
+      <p class="soluk">⚑ ile işaretlediğiniz testler. Kopyalayıp listeyi hazırlayan yapay zekâya yapıştırın; düzeltilmiş listeyi yeniden açınca test yenilenir.</p>` : ""}
     ${mac ? `<h4>Mac'te açan tarayıcı</h4><p>${KKParse.satirIci(mac)} · <a href="kelimekarti://tarayici" id="tarayiciLink">Değiştir</a></p>
       <p class="soluk">Finder'daki “Kelime kartı yap” (⌃⌥⌘L) bu tarayıcıyı açar.</p>` : ""}
     <h4>Liste</h4>
@@ -414,6 +426,16 @@ function ayarPaneli() {
     const el = $("#sesSec"); if (el && $("#ayarPanel").open) { el.innerHTML = sesSecenekleri(D.ayar.dil); $("#sesNot").textContent = sesNotu(D.ayar.dil); }
   };
   $("#disaBtn", d).onclick = isaretDisa;
+  if ($("#hataKopyala", d)) {
+    $("#hataKopyala", d).onclick = async () => {
+      try { await navigator.clipboard.writeText(hataMetni().metin); bildir("Hatalı testler panoya kopyalandı."); }
+      catch (e) { prompt("Kopyalayın:", hataMetni().metin); }
+    };
+    $("#hataTemizle", d).onclick = () => {
+      const h = hataListesi(); for (const k of Object.keys(h)) if (h[k].liste === D.id) delete h[k];
+      depo.koy("kk.hata", h); ayarPaneli(); bildir("Hatalı test işaretleri temizlendi.");
+    };
+  }
   $("#iceBtn", d).onclick = isaretIce;
   $("#resetBtn", d).onclick = () => {
     if (!confirm("Bu listedeki öğrenildi, sık ve seyrek işaretleri silinsin mi?\nFavoriler kalır.")) return;
@@ -442,6 +464,7 @@ function bilgiPaneli() {
   const eksik = L.kartlar.filter((k) => L.alanlar.some((a) => !k.f[a.k])).length;
   const say = { ok: 0, sik: 0, seyrek: 0, fav: 0 };
   for (const k of L.kartlar) { const i = D.isaret[anahtar(k)] || {}; if (i.d) say[i.d]++; if (i.fav) say.fav++; }
+  const testSayisi = L.kartlar.reduce((s, k) => s + (k.t ? k.t.length : 0), 0);
   panelAc("bilgiPanel", `<h3>${KKParse.satirIci(L.baslik || L.ad)}</h3>
     <p class="soluk">${KKParse.satirIci(L.ad)}</p>
     <p><b>${n}</b> kart${oturum ? ` · ${oturum} oturum` : ""}${eksik ? ` · ${eksik} kartta boş alan var` : ""}</p>
@@ -451,7 +474,9 @@ function bilgiPaneli() {
       <p class="soluk">Bu satırlar karta alınmadı; geri kalanı çalışılabilir. Dosyada düzeltip yeniden açarsanız eklenir.</p>
       ${L.sorunlar.map((s) => `<div class="sorun"><b>${KKParse.satirIci(String(s.satir))}</b>: ${KKParse.satirIci(s.neden)}</div>`).join("")}` : ""}
     <h4>Klavye</h4>
-    <p class="soluk">↑ ↓ kart seç · Boşluk Grup 2 aç/kapa · ⇧ Boşluk Grup 1 · 1 öğrenildi · 2 sık · 3 seyrek · 4 favori · S sesli oku · / ara</p>`);
+    <p class="soluk">↑ ↓ kart seç · Boşluk Grup 2 aç/kapa · ⇧ Boşluk Grup 1 · 1 öğrenildi · 2 sık · 3 seyrek · 4 favori · S sesli oku · / ara · C çalış</p>
+    <p class="soluk">Çalışırken: Boşluk cevabı aç · ${kac(BS_ETIKET)} bildim/doğruydu · V bilemedim/yanlıştı · A S D F seçenekler · Enter kontrol/sonraki · Esc çık</p>
+    ${testSayisi ? `<p>${testSayisi} test</p>` : ""}`);
 }
 
 function listePaneli() {
@@ -525,6 +550,11 @@ const ORNEK = `# Almanca — Örnek liste
 - **Anlam:** sakin, sessiz
 - **Cümle içinde kullanımı:** *Ich bin meistens ruhig, auch wenn es stressig wird.*
   *Stresli olsa bile genelde sakinimdir.*
+- **Eş anlamlı:** gelassen
+- **Zıt anlamlı:** unruhig; nervös
+- **Çeldirici Anlam:** durgun; çekingen; yavaş
+- **Test:** Cümlede yerine | *Ich bin meistens ___.* Hangileri olur? | gelassen; entspannt | leise; still | „leise“ yalnız ses için; „still“ ortam ya da kişinin konuşmaması için, mizaç için değil
+- **Test:** Boşluk | *Mein Kollege ist ___, er wird nie laut.* | ruhig | | Sıfat yüklemde çekimsiz kalır
 
 ### jemandem Bescheid geben
 - **Anlam:** birine haber vermek
@@ -536,8 +566,355 @@ const ORNEK = `# Almanca — Örnek liste
 - **Anlam:** randevu
 - **Cümle içinde kullanımı:** *Ich habe morgen einen Termin beim Arzt.*
   *Yarın doktorda randevum var.*
-- **Eş anlam:** die Verabredung
+- **Eş anlamlı:** die Verabredung
+- **Test:** Artikel | ___ Termin | der | die; das | Termin erkektir: der Termin, die Termine
 `;
+
+// ------------------------------------------------------------ tek kart modu (calis)
+// Kipler: acbak (cevabi ac, Bildim/Bilemedim), yaz (cevabi yaz, Kontrol, kullanici karar verir), sec (dort secenek,
+// uygulama degerlendirir), test (dosyadaki yapay zeka testleri). Yanlis -> kart "sik" (↻). Soru Grup 1, cevap Grup 2;
+// yon ⚙ -> ⇄ ile degisir. Tuslar FIZIKSEL konumla (Dosya Inceleme ile ayni, 09.10.2026): \ (e.code Backslash; Almanca
+// klavyede #) = Bildim, V = Bilemedim, A S D F G H J K = secenekler.
+const META = new Set(["dogru", "celAnlam", "celWort"]);
+const SECENEK_TUS = ["KeyA", "KeyS", "KeyD", "KeyF", "KeyG", "KeyH", "KeyJ", "KeyK"];
+const SECENEK_HARF = ["a", "s", "d", "f", "g", "h", "j", "k"];
+let BS_ETIKET = "\\";
+(async () => { try { const m = await navigator.keyboard.getLayoutMap(), c = m.get("Backslash"); if (c) BS_ETIKET = c; } catch (e) { /* Safari: yok */ } })();
+const C = { acik: false };
+const KIP_ADI = { acbak: "Aç-bak", yaz: "Yaz", sec: "Seç", test: "Test" };
+
+const karistir = (a) => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+const listeAyir = (h) => duz(h).split(/\s*;\s*/).map((x) => x.trim()).filter(Boolean);
+function lev(a, b) {
+  const m = a.length, n = b.length; if (!m) return n; if (!n) return m;
+  let o = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) {
+    const y = [i];
+    for (let j = 1; j <= n; j++) y[j] = Math.min(o[j] + 1, y[j - 1] + 1, o[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    o = y;
+  }
+  return o[n];
+}
+const benzerlik = (a, b) => { a = KKParse.sade(a); b = KKParse.sade(b); return 1 - lev(a, b) / Math.max(1, a.length, b.length); };
+
+function calisKartlari() {
+  const xs = D.liste.kartlar.map((k, n) => ({ k, n })).filter((x) => gorunurMu(x.k) && aramaUyar(x.k));
+  if (D.sira) xs.sort((a, b) => D.sira.get(a.n) - D.sira.get(b.n));
+  return xs;
+}
+function testTurleri(xs) {
+  const say = new Map();
+  for (const x of xs) for (const t of x.k.t || []) say.set(t.tur, (say.get(t.tur) || 0) + 1);
+  return [...say.entries()];
+}
+/** Cevap alani: Grup 2'deki ilk dolu alan (META haric). */
+function hedefAlan(kart) {
+  return D.liste.alanlar.find((a) => D.ayar.grup[a.k] === 2 && kart.f[a.k] && !META.has(a.rol)) || null;
+}
+function grupHtml(kart, g) {
+  return D.liste.alanlar.filter((a) => D.ayar.grup[a.k] === g && kart.f[a.k] && !META.has(a.rol)).map((a) => alanHtml(a, kart.f[a.k])).join("");
+}
+
+// ---- secenekler: once dosyadaki celdiriciler, eksikse listedeki kartlardan benzerlikle
+function kelimeTuru(s) {
+  const t = s.trim();
+  if (/^(der|die|das|ein|eine)\s/i.test(t)) return "ad";
+  if (/\S+m[ae]k$/i.test(t)) return "fiil";
+  if (/^[a-zäöüß]+(en|ern|eln)$/.test(t) || /^(sich|jemandem|jemanden|etw)\b/i.test(t)) return "fiil";
+  if (/^[A-ZÄÖÜ]/.test(t) && !/\s/.test(t)) return "ad";
+  return /\s/.test(t) ? "kalip" : "diger";
+}
+function benzerSecenekler(kart, alan, dogru, adet) {
+  const d = KKParse.sade(dogru), dk = new Set(d.split(" ").filter((x) => x.length >= 3)), tur = kelimeTuru(dogru);
+  const adaylar = [];
+  for (const k of D.liste.kartlar) {
+    if (k === kart || !k.f[alan.k]) continue;
+    const m = duz(k.f[alan.k]), s = KKParse.sade(m);
+    if (!s || s === d || s.split(" ").some((x) => dk.has(x))) continue;        // ikinci dogru olmasin
+    const puan = (kelimeTuru(m) === tur ? 2 : 0) + 2 * benzerlik(m, dogru)
+      + Math.min(m.length, dogru.length) / Math.max(m.length, dogru.length) + (k.o && k.o === kart.o ? 0.5 : 0);
+    adaylar.push({ m, puan });
+  }
+  adaylar.sort((a, b) => b.puan - a.puan);
+  const tekil = []; for (const a of adaylar) if (!tekil.some((x) => KKParse.sade(x) === KKParse.sade(a.m))) tekil.push(a.m);
+  return karistir(tekil.slice(0, Math.max(adet * 2, 6))).slice(0, adet);
+}
+function secenekKur(kart) {
+  const alan = hedefAlan(kart);
+  if (!alan) return null;
+  const dogru = duz(kart.f[alan.k]);
+  const celK = alan.rol === "anlam" ? "celAnlam" : alan.rol === "wort" ? "celWort" : null;
+  let yanlis = celK && kart.f[celK] ? listeAyir(kart.f[celK]).filter((x) => KKParse.sade(x) !== KKParse.sade(dogru)) : [];
+  yanlis = karistir(yanlis).slice(0, 3);
+  const dosyadan = yanlis.length;
+  if (yanlis.length < 3) yanlis = yanlis.concat(benzerSecenekler(kart, alan, dogru, 3 - yanlis.length).filter((x) => !yanlis.includes(x)));
+  return { alan, dogru: [dogru], secenekler: karistir([dogru, ...yanlis]), dosyadan };
+}
+
+// ---- yazilan cevabin karsilastirilmasi: harf harf hizalama
+function adaylar(kart, alan) {
+  const tam = duz(kart.f[alan.k]);
+  const l = [tam, ...tam.split(/\s*[,;/]\s*/), ...(kart.f.dogru ? listeAyir(kart.f.dogru) : [])];
+  return [...new Set(l.map((x) => x.trim()).filter(Boolean))];
+}
+function enYakin(cevap, liste) {
+  let en = liste[0], p = -1;
+  for (const a of liste) { const b = benzerlik(cevap, a); if (b > p) { p = b; en = a; } }
+  return en;
+}
+function farkHtml(cevap, dogru) {
+  const a = [...cevap], b = [...dogru], m = a.length, n = b.length;
+  const al = (x) => x.toLocaleLowerCase("de");
+  const D2 = Array.from({ length: m + 1 }, (_, i) => Array.from({ length: n + 1 }, (_, j) => (i ? (j ? 0 : i) : j)));
+  for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++)
+    D2[i][j] = Math.min(D2[i - 1][j] + 1, D2[i][j - 1] + 1, D2[i - 1][j - 1] + (al(a[i - 1]) === al(b[j - 1]) ? (a[i - 1] === b[j - 1] ? 0 : 0.1) : 1));
+  const ops = []; let i = m, j = n;
+  while (i || j) {
+    if (i && j && D2[i][j] === D2[i - 1][j - 1] + (al(a[i - 1]) === al(b[j - 1]) ? (a[i - 1] === b[j - 1] ? 0 : 0.1) : 1)) {
+      ops.push(a[i - 1] === b[j - 1] ? ["=", a[i - 1]] : al(a[i - 1]) === al(b[j - 1]) ? ["buyuk", a[i - 1]] : ["yanlis", a[i - 1]]); i--; j--;
+    } else if (i && D2[i][j] === D2[i - 1][j] + 1) { ops.push(["fazla", a[i - 1]]); i--; }
+    else { ops.push(["eksik", b[j - 1]]); j--; }
+  }
+  ops.reverse();
+  const noktaMi = (c) => !/[\p{L}\p{N}]/u.test(c);
+  let hata = 0;
+  const html = ops.map(([t, c]) => {
+    if (t === "=") return kac(c);
+    hata++;
+    const nk = noktaMi(c) ? " h-nokta" : "";
+    const g = c === " " ? "␣" : kac(c);
+    if (t === "buyuk") return `<span class="h-buyuk${nk}" title="büyük/küçük harf">${g}</span>`;
+    if (t === "yanlis") return `<b class="h-yanlis${nk}" title="yanlış harf">${g}</b>`;
+    if (t === "fazla") return `<s class="h-fazla${nk}" title="fazla">${g}</s>`;
+    return `<u class="h-eksik${nk}" title="eksik">${g}</u>`;
+  }).join("");
+  return { html, hata };
+}
+
+// ---- oturum
+function calisPaneli() {
+  const xs = calisKartlari();
+  const turler = testTurleri(xs);
+  const kapali = new Set(D.ayar.testKapali || []);
+  const testSay = turler.reduce((s, [t, n]) => s + (kapali.has(t) ? 0 : n), 0);
+  const kip = (k, ad, aciklama, kapat) => `<button class="kip${kapat ? "" : " ana"}" data-kip="${k}" ${kapat ? "disabled" : ""}>
+    <b>${ad}</b><small>${aciklama}</small></button>`;
+  const d = panelAc("calisPanel", `<h3>Çalış</h3>
+    <p class="soluk">${xs.length} kart (şu anki süzgeç${D.ara ? " ve arama" : ""}). Soru Grup 1, cevap Grup 2; yönü ⚙ → ⇄ değiştirir.</p>
+    <div class="kipler">
+      ${kip("acbak", "Aç-bak", `cevabı aç · ${BS_ETIKET} bildim · V bilemedim`, !xs.length)}
+      ${kip("yaz", "Yaz", "cevabı yaz · Enter kontrol · kararı siz verirsiniz", !xs.length)}
+      ${kip("sec", "Seç", "dört seçenek · A S D F", xs.length < 2)}
+      ${kip("test", `Test${testSay ? ` (${testSay})` : ""}`, turler.length ? "listedeki testler" : "bu listede test yok", !testSay)}
+    </div>
+    ${turler.length ? `<h4>Test türleri</h4><div class="turler">${turler.map(([t, n]) =>
+      `<label><input type="checkbox" data-tur="${kac(t)}" ${kapali.has(t) ? "" : "checked"}> ${kac(t)} <small>${n}</small></label>`).join("")}</div>` : ""}
+    <h4>Sıra</h4>
+    <label><input type="checkbox" id="calisKar" ${D.ayar.calisKaristir === false ? "" : "checked"}> Karıştır</label>`);
+  $$("[data-tur]", d).forEach((c) => (c.onchange = () => {
+    const s = new Set(D.ayar.testKapali || []);
+    if (c.checked) s.delete(c.dataset.tur); else s.add(c.dataset.tur);
+    D.ayar.testKapali = [...s]; ayarKaydet(); calisPaneli();
+  }));
+  $("#calisKar", d).onchange = (e) => { D.ayar.calisKaristir = e.target.checked; ayarKaydet(); };
+  $$("[data-kip]", d).forEach((b) => (b.onclick = () => { d.close(); calisBasla(b.dataset.kip); }));
+}
+
+function calisBasla(kip, ogeler) {
+  const xs = calisKartlari();
+  if (!ogeler) {
+    const kapali = new Set(D.ayar.testKapali || []);
+    ogeler = kip === "test"
+      ? xs.flatMap((x) => (x.k.t || []).filter((t) => !kapali.has(t.tur)).map((t) => ({ kart: x.k, test: t })))
+      : xs.filter((x) => kip === "acbak" || hedefAlan(x.k)).map((x) => ({ kart: x.k }));
+    if (D.ayar.calisKaristir !== false) ogeler = karistir(ogeler);
+  }
+  if (!ogeler.length) { bildir("Çalışılacak kart yok."); return; }
+  Object.assign(C, { acik: true, kip, ogeler, i: 0, dogru: 0, yanlis: 0, yanlislar: [] });
+  D.ayar.calisKip = kip; ayarKaydet();
+  $("#calis").hidden = false; document.body.classList.add("calisiyor");
+  soruKur();
+}
+function calisKapat() {
+  C.acik = false; $("#calis").hidden = true; document.body.classList.remove("calisiyor");
+  if (window.speechSynthesis) speechSynthesis.cancel();
+  ciz();
+}
+function soruKur() {
+  const o = C.ogeler[C.i];
+  C.o = o; C.durum = "soru"; C.secim = new Set(); C.cevap = "";
+  o.sec = null;
+  if (C.kip === "sec") o.sec = secenekKur(o.kart);
+  if (C.kip === "test" && o.test.yanlis.length) o.sec = { dogru: o.test.dogru, secenekler: karistir([...o.test.dogru, ...o.test.yanlis]).slice(0, 8) };
+  calisCiz();
+}
+const yazmaKipi = () => C.kip === "yaz" || (C.kip === "test" && !C.o.test.yanlis.length);
+const coklu = () => C.o.sec && C.o.sec.dogru.length > 1;
+
+function calisCiz() {
+  const o = C.o, k = o.kart, i = D.isaret[anahtar(k)] || {};
+  const cevapVar = C.durum !== "soru";
+  let soru = "", cevap = "", alt = "";
+  if (C.kip === "test") {
+    soru = `<div class="test-tur">${kac(o.test.tur)}</div><div class="test-soru">${KKParse.satirIci(o.test.soru)}</div>`;
+  } else {
+    soru = `<div class="bolge">${grupHtml(k, 1) || `<div class="f-wort">${k.f.wort}</div>`}</div>`;
+  }
+  // secenekler
+  if (o.sec) {
+    const dogruS = new Set(o.sec.dogru.map(KKParse.sade));
+    cevap += `<div class="secenekler${coklu() ? " coklu" : ""}">${o.sec.secenekler.map((s, j) => {
+      let c = "";
+      if (cevapVar) c = dogruS.has(KKParse.sade(s)) ? (C.secim.has(j) ? " dogru" : " kacan") : C.secim.has(j) ? " yanlis" : " soluk";
+      else if (C.secim.has(j)) c = " secili";
+      return `<button class="secenek${c}" data-j="${j}"><kbd>${SECENEK_HARF[j].toUpperCase()}</kbd><span>${KKParse.satirIci(s)}</span></button>`;
+    }).join("")}</div>`;
+    if (coklu() && !cevapVar) cevap += `<p class="soluk ortala">Birden çok doğru olabilir · işaretleyip Enter</p>`;
+    if (C.kip === "sec" && o.sec.dosyadan < 3 && !cevapVar) cevap += `<p class="soluk ortala">${o.sec.dosyadan ? "Bazı seçenekler" : "Seçenekler"} listedeki kartlardan seçildi.</p>`;
+  }
+  if (yazmaKipi()) {
+    cevap += `<div class="yaz"><input id="yazGir" type="text" autocomplete="off" autocapitalize="off" spellcheck="false"
+      placeholder="Cevabınız…" value="${kac(C.cevap)}" ${cevapVar ? "disabled" : ""}></div>`;
+    if (cevapVar) {
+      const liste = C.kip === "yaz" ? adaylar(k, hedefAlan(k)) : o.test.dogru;
+      const en = enYakin(C.cevap, liste), f = farkHtml(C.cevap || "", en);
+      cevap += `<div class="fark"><div><small>Sizin</small> ${C.cevap ? f.html : "<i>boş</i>"}</div>
+        <div><small>Doğru</small> ${kac(en)}</div>${f.hata ? "" : `<div class="ayni">Aynı görünüyor</div>`}</div>`;
+    }
+  }
+  // cevap acildiginda gosterilecek bilgi
+  if (cevapVar) {
+    if (C.kip === "test") {
+      cevap += `<div class="cevap-bilgi">${o.test.aciklama ? `<div class="f-not">${KKParse.satirIci(o.test.aciklama)}</div>` : ""}
+        <div class="f-x"><span class="ad">Kelime</span>${k.f.wort}</div></div>`;
+    } else {
+      const g2 = grupHtml(k, 2);
+      if (g2) cevap += `<div class="bolge cevap2">${g2}</div>`;
+    }
+  }
+  // alt dugmeler
+  if (C.durum === "soru") {
+    if (C.kip === "acbak") alt = `<button class="ana genis" data-c="ac">Cevabı göster <kbd>Boşluk</kbd></button>`;
+    else if (yazmaKipi()) alt = `<button class="ana genis" data-c="kontrol">Kontrol <kbd>Enter</kbd></button>`;
+    else if (coklu()) alt = `<button class="ana genis" data-c="degerlendir">Kontrol <kbd>Enter</kbd></button>`;
+  } else if (C.durum === "karar") {
+    alt = `<button class="iyi" data-c="bildim">${C.kip === "acbak" ? "Bildim" : "Doğruydu"} <kbd>${kac(BS_ETIKET)}</kbd></button>
+      <button class="kotu" data-c="bilemedim">${C.kip === "acbak" ? "Bilemedim" : "Yanlıştı"} <kbd>V</kbd></button>`;
+  } else {
+    alt = `<span class="sonuc ${C.sonOk ? "iyi" : "kotu"}">${C.sonOk ? "Doğru" : "Yanlış → ↻"}</span>
+      <button class="ana" data-c="sonraki">Sonraki <kbd>Enter</kbd></button>`;
+  }
+  const d = (x, t, s) => `<button data-a="${x}" title="${t}" class="${s ? "secili" : ""}">${{ ok: "✓", sik: "↻", seyrek: "◌", fav: "★", ses: "🔊", hata: "⚑" }[x]}</button>`;
+  const hk = C.kip === "test" ? hataAnahtar(k, o.test) : null;
+  $("#calis").innerHTML = `<div class="calis-ust"><span class="ilerleme">${C.i + 1} / ${C.ogeler.length}</span>
+      <span class="kip-adi">${KIP_ADI[C.kip]}</span><span class="sayac">✓ ${C.dogru} · ✗ ${C.yanlis}</span>
+      <button class="ikon" data-c="kapat" title="Kapat (Esc)">✕</button></div>
+    <div class="calis-cubuk"><span style="width:${(100 * C.i) / C.ogeler.length}%"></span></div>
+    <div class="calis-govde"><article class="kart tek">${soru}${cevap}
+      <div class="isaretler">${d("ses", "Sesli oku")}${d("ok", "Öğrenildi", i.d === "ok")}${d("sik", "Sık tekrar", i.d === "sik")}${d("seyrek", "Seyrek tekrar", i.d === "seyrek")}${d("fav", "Favori", i.fav)}${hk ? d("hata", "Hatalı test: işaretle, ⚙'den kopyalayıp düzelttirin", !!hataListesi()[hk]) : ""}</div>
+    </article></div>
+    <div class="calis-alt">${alt}</div>`;
+  const g = $("#yazGir");
+  if (g) { g.oninput = (e) => (C.cevap = e.target.value); if (C.durum === "soru") setTimeout(() => g.focus(), 30); }
+}
+
+function cevapla(dogruMu) {
+  if (dogruMu) C.dogru++;
+  else {
+    C.yanlis++; C.yanlislar.push(C.o);
+    const k = anahtar(C.o.kart), i = { ...(D.isaret[k] || {}) };
+    if (i.d !== "ok") { i.d = "sik"; D.isaret[k] = i; isaretKaydet(); }
+  }
+  C.sonOk = dogruMu;
+}
+function sonraki() {
+  if (C.i + 1 < C.ogeler.length) { C.i++; soruKur(); return; }
+  C.durum = "bitti";
+  const n = C.yanlislar.length;
+  $("#calis").innerHTML = `<div class="calis-ust"><span class="ilerleme">${C.ogeler.length} / ${C.ogeler.length}</span>
+      <span class="kip-adi">${KIP_ADI[C.kip]}</span><span class="sayac"></span><button class="ikon" data-c="kapat">✕</button></div>
+    <div class="calis-govde"><article class="kart tek ozet"><h2>Tur bitti</h2>
+      <p class="buyuk"><span class="iyi">✓ ${C.dogru} doğru</span> · <span class="kotu">✗ ${C.yanlis} yanlış</span></p>
+      ${n ? `<p class="soluk">Yanlışlar ↻ (Sık tekrar) olarak işaretlendi.</p>` : ""}</article></div>
+    <div class="calis-alt">${n ? `<button class="ana" data-c="yanlislar">Yanlışları tekrar et (${n}) <kbd>Enter</kbd></button>` : ""}
+      <button data-c="yeniden">Yeniden başla</button><button data-c="kapat">Listeye dön <kbd>Esc</kbd></button></div>`;
+}
+function eylem(c, j) {
+  if (c === "kapat") return calisKapat();
+  if (C.durum === "bitti") {
+    if (c === "yanlislar" && C.yanlislar.length) return calisBasla(C.kip, karistir(C.yanlislar));
+    if (c === "yeniden") return calisBasla(C.kip);
+    return;
+  }
+  if (c === "ac" && C.durum === "soru" && C.kip === "acbak") { C.durum = "karar"; return calisCiz(); }
+  if (c === "kontrol" && C.durum === "soru" && yazmaKipi()) { C.cevap = ($("#yazGir") || {}).value || C.cevap; C.durum = "karar"; calisCiz(); document.activeElement && document.activeElement.blur(); return; }
+  if ((c === "bildim" || c === "bilemedim") && C.durum === "karar") { cevapla(c === "bildim"); return sonraki(); }
+  if (c === "sec" && C.durum === "soru" && C.o.sec && j < C.o.sec.secenekler.length) {
+    if (coklu()) { C.secim.has(j) ? C.secim.delete(j) : C.secim.add(j); return calisCiz(); }
+    C.secim = new Set([j]); return eylem("degerlendir");
+  }
+  if (c === "degerlendir" && C.durum === "soru" && C.o.sec) {
+    if (!C.secim.size) return;
+    const dogruS = new Set(C.o.sec.dogru.map(KKParse.sade));
+    const secilen = new Set([...C.secim].map((x) => KKParse.sade(C.o.sec.secenekler[x])));
+    cevapla(secilen.size === dogruS.size && [...secilen].every((x) => dogruS.has(x)));
+    C.durum = "sonuc"; return calisCiz();
+  }
+  if (c === "sonraki" && C.durum === "sonuc") return sonraki();
+}
+$("#calis").addEventListener("click", (e) => {
+  const s = e.target.closest(".secenek"); if (s) return eylem("sec", +s.dataset.j);
+  const b = e.target.closest("[data-c]"); if (b) return eylem(b.dataset.c);
+  const a = e.target.closest("button[data-a]");
+  if (a) {
+    const k = C.o.kart;
+    if (a.dataset.a === "ses") oku(k);
+    else if (a.dataset.a === "hata") hataCevir(k, C.o.test);
+    else isaretDegis(k, a.dataset.a);
+    calisCiz();
+  }
+});
+document.addEventListener("keydown", (e) => {
+  if (!C.acik) return;
+  e.stopImmediatePropagation();
+  if (e.key === "Escape") { e.preventDefault(); return calisKapat(); }
+  if (e.target.id === "yazGir") { if (e.key === "Enter") { e.preventDefault(); eylem("kontrol"); } return; }
+  if (e.metaKey || e.ctrlKey) return;
+  const bs = e.code === "Backslash" || e.key === "\\";
+  if (e.altKey && !bs) return;
+  if (bs || e.code === "KeyV") {
+    e.preventDefault();
+    if (C.durum === "soru" && C.kip === "acbak") return eylem("ac");
+    return eylem(bs ? "bildim" : "bilemedim");
+  }
+  const j = SECENEK_TUS.indexOf(e.code);
+  if (j >= 0 && C.durum === "soru" && C.o && C.o.sec) { e.preventDefault(); return eylem("sec", j); }
+  if (e.key === " " || e.key === "Enter") {
+    e.preventDefault();
+    if (C.durum === "bitti") return eylem(e.key === "Enter" && C.yanlislar.length ? "yanlislar" : "yeniden");
+    if (C.durum === "sonuc") return eylem("sonraki");
+    if (C.kip === "acbak" && C.durum === "soru") return eylem("ac");
+    if (yazmaKipi() && C.durum === "soru") { const g = $("#yazGir"); if (g) g.focus(); return; }
+    if (coklu() && C.durum === "soru" && e.key === "Enter") return eylem("degerlendir");
+  }
+}, true);
+
+// ---- hatali test isaretleri (cihaz basina, kk.hata): ⚙'den kopyalanip ajana duzelttirilir
+const hataAnahtar = (kart, t) => D.id + "|" + anahtar(kart) + "|" + t.tur + "|" + t.soru;
+const hataListesi = () => depo.al("kk.hata", {}) || {};
+function hataCevir(kart, t) {
+  const h = hataListesi(), k = hataAnahtar(kart, t);
+  if (h[k]) { delete h[k]; bildir("Hatalı test işareti kaldırıldı."); }
+  else { h[k] = { liste: D.id, wort: anahtar(kart), ...t }; bildir("Test hatalı diye işaretlendi; ⚙ → Hatalı testler."); }
+  depo.koy("kk.hata", h);
+}
+function hataMetni() {
+  const l = Object.values(hataListesi()).filter((x) => x.liste === D.id);
+  const kelime = new Map();
+  for (const x of l) { if (!kelime.has(x.wort)) kelime.set(x.wort, []); kelime.get(x.wort).push(x); }
+  return { n: l.length, metin: `Kelime Kartı'nda hatalı diye işaretlediğim testler (${D.liste.ad}). Lütfen düzelt ya da sil:\n\n` +
+    [...kelime].map(([w, xs]) => `### ${w}\n` + xs.map((t) => `- **Test:** ${t.tur} | ${t.soru} | ${t.dogru.join("; ")} | ${t.yanlis.join("; ")} | ${t.aciklama}`).join("\n")).join("\n\n") };
+}
 
 // ------------------------------------------------------------ bildirim
 let bildirimSaat;

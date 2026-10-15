@@ -1,9 +1,12 @@
 /* parse.js — kelime listesi okuyucu: .md .txt .csv .tsv .json .xlsx .docx -> ortak liste modeli.
  * Tarayicida ve Node'da (testler) ayni kod calisir; dis kutuphane yok.
  *
- * Liste: { ad, baslik, dil, alanlar:[{k, ad, rol}], kartlar:[{o, f:{k: html}}], sorunlar:[{satir, neden}] }
- *   alanlar  dosyada bulunan alanlar; bilinen roller wort, satz, anlam, ceviri, not; digerleri serbest
+ * Liste: { ad, baslik, dil, alanlar:[{k, ad, rol}], kartlar:[{o, f:{k: html}, t?:[test]}], sorunlar:[{satir, neden}] }
+ *   alanlar  dosyada bulunan alanlar; bilinen roller wort, satz, anlam, ceviri, not, es, zit, dogru, celAnlam,
+ *            celWort; digerleri serbest
  *   kartlar  o = oturum basligi ("" = oturumsuz), f = alan anahtari -> guvenli HTML
+ *   test     { tur, soru, dogru:[..], yanlis:[..], aciklama } duz metin (markdown satir ici), yanlis bos = yazarak
+ *            Bicim tarifi: ~/.agent-skills/dil-koclugu/references/kelime-listesi-bicimi.md
  *   sorunlar okunamayan satirlar; is durdurulmaz, yalniz bilgi olarak gosterilir
  */
 (function (kok) {
@@ -20,11 +23,22 @@
     ceviri: ["ceviri", "cevirisi", "cumle cevirisi", "ubersetzung", "translation", "tr", "traduccion", "vertaling"],
     not: ["not", "notlar", "notiz", "note", "notes", "aciklama", "kisa aciklama", "erklarung", "hinweis",
       "bemerkung", "kommentar", "comment", "nota"],
+    es: ["es anlamli", "es anlam", "es anlamlilar", "es anlamlisi", "synonym", "synonyme", "synonyms", "sinonim",
+      "sinonimler", "sinonimo", "sinonimos", "synoniem"],
+    zit: ["zit anlamli", "zit anlam", "zit anlamlilar", "zit anlamlisi", "karsit anlam", "antonym", "antonyme",
+      "antonyms", "antonimo", "antonimos", "antoniem"],
+    dogru: ["diger dogrular", "diger dogru", "diger dogru cevaplar", "kabul edilen", "alternatif", "alternatifler",
+      "auch richtig", "also correct"],
+    celAnlam: ["celdirici anlam", "celdiriciler anlam", "anlam celdirici", "distraktor anlam", "distractor meaning"],
+    celWort: ["celdirici wort", "celdirici kelime", "celdiriciler wort", "wort celdirici", "distraktor wort",
+      "distractor word"],
   };
+  const TEST_ADI = new Set(["test", "testler", "quiz", "alistirma"]);
   const OTURUM = ["oturum", "tarih", "konu", "thema", "lektion", "kapitel", "session", "topic", "date", "ders",
     "unit", "kategorie", "category", "bolum"];
-  const ROL_ADI = { wort: "Wort", satz: "Satz", anlam: "Anlam", ceviri: "Çeviri", not: "Not" };
-  const ROL_SIRA = ["wort", "satz", "anlam", "ceviri", "not"];
+  const ROL_ADI = { wort: "Wort", satz: "Satz", anlam: "Anlam", ceviri: "Çeviri", not: "Not", es: "Eş anlamlı",
+    zit: "Zıt anlamlı", dogru: "Diğer doğrular", celAnlam: "Çeldirici Anlam", celWort: "Çeldirici Kelime" };
+  const ROL_SIRA = ["wort", "satz", "anlam", "ceviri", "not", "es", "zit", "dogru", "celAnlam", "celWort"];
 
   /** Karsilastirma bicimi: kucuk harf, aksansiz, i/ı ayni, noktalama bosluk. */
   function sade(s) {
@@ -72,6 +86,22 @@
   function italikSoy(s) {
     const m = /^\*(.+)\*$/.exec(s.trim());
     return m ? m[1].trim() : s.trim();
+  }
+  /** "Tur | Soru | Dogru(lar) | Yanlislar | Aciklama" -> test; eksikse null. Listeler ";" ile ayrilir. */
+  const parcala = (s) => String(s || "").split(";").map((x) => x.trim()).filter(Boolean);
+  function testOlustur(tur, soru, dogru, yanlis, aciklama) {
+    const t = { tur: String(tur || "").trim() || "Test", soru: String(soru || "").trim(), dogru: parcala(dogru),
+      yanlis: parcala(yanlis), aciklama: String(aciklama || "").trim() };
+    return t.soru && t.dogru.length ? t : null;
+  }
+  function testSatiri(metin) {
+    const p = String(metin).split("|");
+    return testOlustur(p[0], p[1], p[2], p[3], p.slice(4).join("|"));
+  }
+  function testEkle(kart, t) { (kart.t = kart.t || []).push(t); }
+  /** HTML -> karsilastirma icin duz metin (DOM yok; Node testinde de calisir). */
+  function htmlDuz(h) {
+    return String(h || "").replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
   }
   function ekle(kart, k, html) {
     if (!html) return;
@@ -133,6 +163,11 @@
       if (!s.trim()) { alan = null; continue; }
       if (kart) {
         const m = MADDE.exec(s);
+        if (m && TEST_ADI.has(sade(m[1]))) {
+          const t = testSatiri(m[2]);
+          if (t) testEkle(kart, t); else sorunlar.push({ satir: no, neden: "test satırı eksik (Tür | Soru | Doğru | Yanlış | Açıklama)" });
+          alan = null; continue;
+        }
         if (m) {
           alan = defter.bul(m[1].replace(/:$/, ""));
           let deger = m[2].trim();
@@ -223,6 +258,42 @@
     return { defter, kartlar, sorunlar };
   }
 
+  /** Test tablosu: baslikta "Soru" ve "Dogru" var. Sutunlar: Wort, Tur, Soru, Dogru, Yanlis, Aciklama. */
+  const TEST_SUTUN = { tur: ["tur", "test turu", "art", "type"], soru: ["soru", "frage", "question"],
+    dogru: ["dogru", "dogrular", "dogru cevap", "dogru cevaplar", "richtig", "correct"],
+    yanlis: ["yanlis", "yanlislar", "yanlis cevaplar", "secenekler", "falsch", "wrong"],
+    aciklama: ["aciklama", "erklarung", "explanation", "neden", "gerekce"] };
+  function testTablosuMu(hucreler) {
+    const h = hucreler.map(sade);
+    return h.some((x) => TEST_SUTUN.soru.includes(x)) && h.some((x) => TEST_SUTUN.dogru.includes(x));
+  }
+  /** -> [{no, w, t}] ; w = kelime metni (duz) */
+  function testTablosuOku(satirlar, sorunlar, yer) {
+    const dolu = satirlar.filter((r) => r.hucreler.some((h) => String(h).trim()));
+    const bas = dolu[0].hucreler.map(sade);
+    const sut = (adlar) => bas.findIndex((x) => adlar.includes(x));
+    const j = { w: bas.findIndex((x) => ROL_BUL.get(x) === "wort" && !TEST_SUTUN.soru.includes(x)), tur: sut(TEST_SUTUN.tur),
+      soru: sut(TEST_SUTUN.soru), dogru: sut(TEST_SUTUN.dogru), yanlis: sut(TEST_SUTUN.yanlis), aciklama: sut(TEST_SUTUN.aciklama) };
+    const al = (r, k) => (j[k] >= 0 ? String(r.hucreler[j[k]] ?? "").trim() : "");
+    const cikti = [];
+    for (const r of dolu.slice(1)) {
+      const t = testOlustur(al(r, "tur"), al(r, "soru"), al(r, "dogru"), al(r, "yanlis"), al(r, "aciklama"));
+      const w = al(r, "w");
+      if (!w) { sorunlar.push({ satir: yer + "satır " + r.no, neden: "testin kelimesi (Wort) boş" }); continue; }
+      if (!t) { sorunlar.push({ satir: yer + "satır " + r.no, neden: "test eksik: Soru ve Doğru dolu olmalı" }); continue; }
+      cikti.push({ no: r.no, w, t });
+    }
+    return cikti;
+  }
+  /** Tablodan gelen testleri kelimeye gore kartlara baglar. */
+  function testleriBagla(kartlar, testler, sorunlar, yer) {
+    const harita = new Map(kartlar.map((k) => [sade(htmlDuz(k.f.wort)), k]));
+    for (const x of testler) {
+      const k = harita.get(sade(x.w));
+      if (k) testEkle(k, x.t); else sorunlar.push({ satir: yer + "satır " + x.no, neden: `test kelimesi listede yok: ${x.w.slice(0, 40)}` });
+    }
+  }
+
   /** RFC 4180 CSV; ayrac verilmezse ilk dolu satirdan sezilir. */
   function csvSatirlari(metin, ayrac) {
     if (!ayrac) {
@@ -249,8 +320,44 @@
     return satirlar;
   }
 
+  /** Duz metin, blok bicimi: her kelime "Alan: deger" satirlari, kelimeler arasinda bos satir; "Test: ..." satirlari. */
+  const BLOK = /^\s*(wort|kelime|kelime\/kalip|word|begriff|vokabel|palabra|woord)\s*:/im;
+  function txtBlokOku(metin, ad) {
+    const defter = alanDefteri();
+    const kartlar = [], sorunlar = [];
+    let oturum = "", baslik = null, kart = null, alan = null;
+    metin.split(/\r?\n/).forEach((ham, i) => {
+      const no = i + 1, s = ham.normalize("NFC").replace(/\s+$/, "");
+      if (!s.trim()) { kart = null; alan = null; return; }
+      if (/^#\s/.test(s) && baslik === null && !kartlar.length) { baslik = s.slice(2).trim(); return; }
+      if (/^#+\s/.test(s)) { oturum = s.replace(/^#+\s+/, "").trim(); kart = alan = null; return; }
+      const m = /^\s*[-*•]?\s*([^:|]{1,40}?)\s*:\s*(.*)$/.exec(s);
+      if (m && TEST_ADI.has(sade(m[1]))) {
+        const t = testSatiri(m[2]);
+        if (!kart) sorunlar.push({ satir: no, neden: "test satırı bir kelimeye bağlı değil" });
+        else if (t) testEkle(kart, t); else sorunlar.push({ satir: no, neden: "test satırı eksik (Tür | Soru | Doğru | Yanlış | Açıklama)" });
+        alan = null; return;
+      }
+      if (m) {
+        const a = defter.bul(m[1]);
+        if (a.rol === "wort") {
+          kart = { o: oturum, f: {} };
+          ekle(kart, a.k, satirIci(m[2]));
+          if (kart.f[a.k]) kartlar.push(kart); else { sorunlar.push({ satir: no, neden: "kelime boş" }); kart = null; }
+          alan = null; return;
+        }
+        if (!kart) { sorunlar.push({ satir: no, neden: "kelime satırından önce: " + s.trim().slice(0, 60) }); return; }
+        alan = a; ekle(kart, a.k, satirIci(m[2])); return;
+      }
+      if (kart && alan) { ekle(kart, alan.k, satirIci(s.trim())); return; }
+      sorunlar.push({ satir: no, neden: "satır biçime uymadı: " + s.trim().slice(0, 60) });
+    });
+    return sonuc(ad, baslik, defter, kartlar, sorunlar);
+  }
+
   /** Duz metin: "kelime — anlam" / "kelime - anlam" / "kelime: anlam" / "kelime = anlam" satirlari. */
   function txtOku(metin, ad) {
+    if (BLOK.test(metin)) return txtBlokOku(metin, ad);
     const defter = alanDefteri();
     const wort = defter.bul("wort"), anlam = defter.bul("anlam");
     const kartlar = [], sorunlar = [];
@@ -283,6 +390,19 @@
       veri = veri.kartlar || veri.cards || veri.items || veri.words || veri.kelimeler || veri.data || [];
     }
     if (!Array.isArray(veri)) throw new Error("JSON'da kart dizisi bulunamadı");
+    // nesnelerde "testler": [{tur, soru, dogru, yanlis, aciklama}] ya da ["Tur | Soru | ..."]
+    const jsonTest = new Map();
+    veri.forEach((x, i) => {
+      if (!x || typeof x !== "object" || Array.isArray(x)) return;
+      const tk = Object.keys(x).find((k) => TEST_ADI.has(sade(k)));
+      if (!tk) return;
+      const liste = (Array.isArray(x[tk]) ? x[tk] : [x[tk]]).map((y) => (typeof y === "string" ? testSatiri(y)
+        : y && typeof y === "object" ? testOlustur(y.tur || y.type, y.soru || y.question, [].concat(y.dogru || y.correct || []).join(";"),
+          [].concat(y.yanlis || y.wrong || []).join(";"), y.aciklama || y.explanation) : null));
+      jsonTest.set(i, liste.filter(Boolean));
+      if (liste.some((y) => !y)) jsonTest.get(i).eksik = true;
+      veri[i] = { ...x }; delete veri[i][tk];
+    });
     let satirlar;
     if (veri.every((x) => Array.isArray(x))) {
       satirlar = veri.map((x, i) => ({ no: i + 1, hucreler: x.map(deger) }));
@@ -294,6 +414,11 @@
       })));
     }
     const t = tabloOkuBaslikli(satirlar, ad, !veri.every((x) => Array.isArray(x)));
+    for (const k of t.kartlar) {
+      const l = jsonTest.get(k.sira);
+      if (l) { l.forEach((y) => testEkle(k, y)); if (l.eksik) t.sorunlar.push({ satir: k.sira + 1, neden: "eksik test atlandı" }); }
+      delete k.sira;
+    }
     t.sorunlar.forEach((s) => (s.satir = "kart " + s.satir));
     return sonuc(ad, baslik, t.defter, t.kartlar, t.sorunlar);
   }
@@ -321,6 +446,7 @@
       });
       if (!Object.keys(kart.f).length) continue;
       if (!kart.f.wort) { sorunlar.push({ satir: r.no, neden: "kelime boş" }); continue; }
+      kart.sira = r.no - 1;
       kartlar.push(kart);
     }
     return { defter, kartlar, sorunlar };
@@ -385,7 +511,8 @@
       yol: (() => { const t = hedef.get((/r:id="([^"]+)"/.exec(m[0]) || [])[1]) || ""; return t.startsWith("/") ? t.slice(1) : "xl/" + t.replace(/^\.\//, ""); })(),
     }));
     if (!sayfalar.length) throw new Error("Excel dosyasında sayfa bulunamadı");
-    const defter = alanDefteri(), kartlar = [], sorunlar = [];
+    const defter = alanDefteri(), kartlar = [], sorunlar = [], testler = [];
+    const okunan = [];
     for (const sy of sayfalar) {
       const xml = await z.metin(sy.yol);
       if (!xml) continue;
@@ -405,8 +532,14 @@
           hucreler[j] = v;
         }
         for (let j = 0; j < hucreler.length; j++) if (hucreler[j] === undefined) hucreler[j] = "";
-        satirlar.push({ no, hucreler, oturum: sayfalar.length > 1 ? sy.ad : "" });
+        satirlar.push({ no, hucreler });
       }
+      const ilk = satirlar.find((r) => r.hucreler.some((h) => String(h).trim()));
+      if (ilk && testTablosuMu(ilk.hucreler)) { testler.push(...testTablosuOku(satirlar, sorunlar, sy.ad + " ")); continue; }
+      okunan.push({ sy, satirlar });
+    }
+    for (const { sy, satirlar } of okunan) {
+      for (const r of satirlar) r.oturum = okunan.length > 1 ? sy.ad : "";
       const t = tabloOku(satirlar, ad, null, [], alanDefteri());
       // sayfalar ayri basliklara sahip olabilir: alanlari ortak deftere tasi
       for (const k of t.kartlar) {
@@ -414,8 +547,9 @@
         for (const a of t.defter.liste()) if (k.f[a.k] !== undefined) yeni.f[defter.bul(a.rol ? a.rol : a.ad).k] = k.f[a.k];
         kartlar.push(yeni);
       }
-      for (const s of t.sorunlar) sorunlar.push({ satir: (sayfalar.length > 1 ? sy.ad + " " : "") + "satır " + s.satir, neden: s.neden });
+      for (const s of t.sorunlar) sorunlar.push({ satir: (okunan.length > 1 ? sy.ad + " " : "") + "satır " + s.satir, neden: s.neden });
     }
+    testleriBagla(kartlar, testler, sorunlar, "Testler ");
     return sonuc(ad, null, defter, kartlar, sorunlar);
   }
 
@@ -432,21 +566,29 @@
       l.sorunlar.forEach((s) => (s.satir = "paragraf " + s.satir));
       return l;
     }
-    const defter = alanDefteri(), kartlar = [], sorunlar = [];
+    const defter = alanDefteri(), kartlar = [], sorunlar = [], testler = [];
+    const okunan = [];
     tablolar.forEach((tm, ti) => {
       const satirlar = [...tm[1].matchAll(/<w:tr\b[\s\S]*?<\/w:tr>/g)].map((rm, ri) => ({
-        no: ri + 1, oturum: tablolar.length > 1 ? `Tablo ${ti + 1}` : "",
+        no: ri + 1,
         hucreler: [...rm[0].matchAll(/<w:tc\b[\s\S]*?<\/w:tc>/g)].map((cm) =>
           [...cm[0].matchAll(/<w:p\b[\s\S]*?<\/w:p>/g)].map((p) => paragrafMetni(p[0])).join("\n")),
       }));
+      const ilk = satirlar.find((r) => r.hucreler.some((h) => String(h).trim()));
+      if (ilk && testTablosuMu(ilk.hucreler)) testler.push(...testTablosuOku(satirlar, sorunlar, `tablo ${ti + 1} `));
+      else okunan.push(satirlar);
+    });
+    okunan.forEach((satirlar, ti) => {
+      for (const r of satirlar) r.oturum = okunan.length > 1 ? `Tablo ${ti + 1}` : "";
       const t = tabloOku(satirlar, ad, null, [], alanDefteri());
       for (const k of t.kartlar) {
         const yeni = { o: k.o, f: {} };
         for (const a of t.defter.liste()) if (k.f[a.k] !== undefined) yeni.f[defter.bul(a.rol ? a.rol : a.ad).k] = k.f[a.k];
         kartlar.push(yeni);
       }
-      for (const s of t.sorunlar) sorunlar.push({ satir: (tablolar.length > 1 ? `tablo ${ti + 1} ` : "") + "satır " + s.satir, neden: s.neden });
+      for (const s of t.sorunlar) sorunlar.push({ satir: (okunan.length > 1 ? `tablo ${ti + 1} ` : "") + "satır " + s.satir, neden: s.neden });
     });
+    testleriBagla(kartlar, testler, sorunlar, "Testler ");
     return sonuc(ad, null, defter, kartlar, sorunlar);
   }
 
@@ -483,7 +625,7 @@
     return l;
   }
 
-  const api = { oku, mdOku, csvOku, txtOku, jsonOku, xlsxOku, docxOku, satirIci, sade, DESTEK };
+  const api = { oku, mdOku, csvOku, txtOku, jsonOku, xlsxOku, docxOku, satirIci, sade, htmlDuz, DESTEK };
   kok.KKParse = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);
