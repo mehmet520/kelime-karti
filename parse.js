@@ -629,19 +629,49 @@
   kok.KKParse = api;
   if (typeof module !== "undefined" && module.exports) {
     module.exports = api;
-    // Komut satiri (ajanlar icin denetim): node parse.js DOSYA... -> kart, test, okunamayan satir; sorun varsa cikis 1
+    // Komut satiri (ajanlar icin denetim): node parse.js DOSYA... -> kart, test, okunamayan satir, eksik kart, kalite.
+    // Kurallar: ~/.agent-skills/dil-koclugu/references/kelime-listesi-bicimi.md (bolum 3, 4, 8). Sorun varsa cikis 1.
     if (typeof require !== "undefined" && require.main === module) {
       const fs = require("fs"), path = require("path");
       (async () => {
         let kod = 0;
         for (const f of process.argv.slice(2)) {
           try {
-            const l = await oku(path.basename(f), new Uint8Array(fs.readFileSync(f)));
-            const t = l.kartlar.reduce((s, k) => s + (k.t ? k.t.length : 0), 0);
-            const testsiz = l.kartlar.filter((k) => !k.t || !k.t.length).length;
-            console.log(`${f}: ${l.kartlar.length} kart, ${t} test, ${testsiz} testsiz kart, ${l.sorunlar.length} okunamayan satır`);
+            const bayt = fs.readFileSync(f);
+            const l = await oku(path.basename(f), new Uint8Array(bayt));
+            const test = l.kartlar.reduce((s, k) => s + (k.t ? k.t.length : 0), 0);
+            // .md: dosyadaki satir sayilari ile okunani karsilastir (yanlis yere yazilan satir sayilir ama okunmaz)
+            let baslik = null, testSatiri = null;
+            if (/\.(md|markdown)$/i.test(f)) {
+              let cit = false; baslik = 0; testSatiri = 0;
+              for (const s of bayt.toString("utf8").split(/\r?\n/)) {
+                if (/^\s*```/.test(s)) { cit = !cit; continue; }
+                if (cit) continue;
+                if (/^###\s/.test(s)) baslik++;
+                if (/^\s*[-*+]\s+\*\*Test:?\*\*/.test(s)) testSatiri++;
+              }
+            }
+            const eksik = [], kalite = [];
+            for (const k of l.kartlar) {
+              const t = k.t || [], ad = htmlDuz(k.f.wort);
+              const yok = ["anlam", "satz", "celAnlam", "celWort"].filter((x) => !k.f[x]);
+              if (t.length < 2) yok.push("en az 2 test");
+              if (yok.length) eksik.push(`${ad}: ${yok.join(", ")}`);
+              const neden = [];
+              if (t.length && new Set(t.map((x) => x.tur)).size < 2) neden.push("tek test türü");
+              if (t.length && !t.some((x) => x.yanlis.length)) neden.push("seçmeli test yok");
+              if (t.filter((x) => x.tur === "Boşluk").length > 1) neden.push("birden çok Boşluk");
+              if (t.some((x) => /Karttaki ifadeyi|^\*?(?:Ich|Man|Er|Sie|Wir|Du) ___\.\*?/.test(x.soru))) neden.push("bağlamsız soru");
+              if (neden.length) kalite.push(`${ad}: ${neden.join(", ")}`);
+            }
+            const sayi = (a, b) => (b === null ? `${a}` : `${a}/${b}`);
+            console.log(`${f}: ${sayi(l.kartlar.length, baslik)} kart, ${sayi(test, testSatiri)} test, ` +
+              `${l.sorunlar.length} okunamayan satır, ${eksik.length} eksik kart, ${kalite.length} kalite sorunu`);
             for (const x of l.sorunlar) console.log(`  satır ${x.satir}: ${x.neden}`);
-            if (l.sorunlar.length || !l.kartlar.length) kod = 1;
+            for (const x of eksik) console.log(`  eksik: ${x}`);
+            for (const x of kalite) console.log(`  kalite: ${x}`);
+            if (!l.kartlar.length || l.sorunlar.length || eksik.length || kalite.length ||
+                (baslik !== null && (baslik !== l.kartlar.length || testSatiri !== test))) kod = 1;
           } catch (e) { console.log(`${f}: HATA ${e.message}`); kod = 1; }
         }
         process.exit(kod);
